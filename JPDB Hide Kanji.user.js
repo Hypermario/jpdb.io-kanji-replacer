@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         JPDB Hide Kanji and Show Furigana with Settings Option
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  Adds an option in the jpdb.io settings page and learn page to hide kanji on the review page, saving the setting in localStorage
 // @match        https://jpdb.io/review*
 // @match        https://jpdb.io/settings*
@@ -78,6 +78,9 @@
         // Run hideKanji if enabled
         if (hideKanjiEnabled) {
             hideKanji();
+
+            // Set up a MutationObserver to watch for changes in the content
+            observeContentChanges();
         }
     }
 
@@ -181,12 +184,40 @@
         }
     }
 
-    // Function to hide kanji and show furigana
+    // Function to observe content changes and reapply hideKanji
+    function observeContentChanges() {
+        // Select the node that contains the content (adjust the selector as needed)
+        var targetNode = document.querySelector('#main') || document.body;
+
+        // Options for the observer (which mutations to observe)
+        var config = { childList: true, subtree: true };
+
+        // Callback function to execute when mutations are observed
+        var callback = function(mutationsList, observer) {
+            for (var mutation of mutationsList) {
+                if (mutation.type === 'childList') {
+                    // Re-run hideKanji when new nodes are added
+                    hideKanji();
+                }
+            }
+        };
+
+        // Create an observer instance linked to the callback function
+        var observer = new MutationObserver(callback);
+
+        // Start observing the target node for configured mutations
+        observer.observe(targetNode, config);
+    }
+
+    // Modified hideKanji function
     function hideKanji() {
         // Find all ruby elements
         var rubyElements = document.querySelectorAll('ruby');
 
         rubyElements.forEach(function(ruby) {
+            // Skip if already processed
+            if (ruby.getAttribute('data-hide-kanji-processed')) return;
+
             // Get the furigana (rt elements)
             var rtElements = ruby.querySelectorAll('rt');
             var furiganaText = '';
@@ -200,25 +231,10 @@
 
             // Replace the ruby element with the furigana text node
             ruby.parentNode.replaceChild(furiganaNode, ruby);
+
+            // Mark as processed
+            ruby.setAttribute('data-hide-kanji-processed', 'true');
         });
-
-        // Hide any remaining kanji characters outside of ruby elements
-        var kanjiRegex = /[\u4E00-\u9FAF\u3400-\u4DBF]/g; // Unicode ranges for kanji
-        var textNodes = getTextNodesUnder(document.body);
-
-        textNodes.forEach(function(node) {
-            if (kanjiRegex.test(node.nodeValue)) {
-                // Replace kanji characters with empty strings
-                node.nodeValue = node.nodeValue.replace(kanjiRegex, '');
-            }
-        });
-    }
-
-    // Helper function to get all text nodes
-    function getTextNodesUnder(el){
-        var nodes = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false), node;
-        while(node = walk.nextNode()) nodes.push(node);
-        return nodes;
     }
 
     // Run the script after the DOM is fully loaded
